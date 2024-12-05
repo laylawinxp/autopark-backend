@@ -11,14 +11,22 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
+import java.sql.SQLException
 
 class RoutesController(private val service: RoutesService) {
 
     fun setupRoutes(routing: Routing) {
         routing.route("/routes") {
             get {
-                val routes = service.getAllRoutes()
-                call.respond(routes)
+                try {
+                    val routes = service.getAllRoutes()
+                    call.respond(routes)
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("message" to "An error occurred while fetching routes")
+                    )
+                }
             }
 
             get("{id}/currently-in-route") {
@@ -57,9 +65,18 @@ class RoutesController(private val service: RoutesService) {
             get("{id}") {
                 val id =
                     call.parameters["id"]?.toIntOrNull() ?: throw BadRequestException("Invalid ID")
-                val route = service.getRoutesById(id)
-                    ?: throw NotFoundException("Route with ID $id not found")
-                call.respond(route)
+                try {
+                    val route = service.getRoutesById(id)
+                        ?: throw NotFoundException("Route with ID $id not found")
+                    call.respond(route)
+                } catch (e: NotFoundException) {
+                    throw e
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("message" to "An error occurred while fetching the route")
+                    )
+                }
             }
 
             post {
@@ -79,27 +96,51 @@ class RoutesController(private val service: RoutesService) {
             put("{id}") {
                 val id =
                     call.parameters["id"]?.toIntOrNull() ?: throw BadRequestException("Invalid ID")
-                val routeDto = call.receive<RoutesDto>().copy(id = id)
-                val updated = service.updateRoute(routeDto)
-                if (updated) {
+                try {
+                    val routeDto = call.receive<RoutesDto>().copy(id = id)
+                    val updated = service.updateRoute(routeDto)
+                    if (updated) {
+                        call.respond(
+                            HttpStatusCode.OK, mapOf("message" to "Route updated successfully")
+                        )
+                    } else {
+                        throw NotFoundException("Route with ID $id not found")
+                    }
+                } catch (e: SQLException) {
                     call.respond(
-                        HttpStatusCode.OK, mapOf("message" to "Route updated successfully")
+                        HttpStatusCode.InternalServerError,
+                        mapOf("message" to "Database error occurred while updating route")
                     )
-                } else {
-                    throw NotFoundException("Route with ID $id not found")
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("message" to "An unexpected error occurred while updating route")
+                    )
                 }
             }
 
             delete("{id}") {
                 val id =
                     call.parameters["id"]?.toIntOrNull() ?: throw BadRequestException("Invalid ID")
-                val deleted = service.deleteRoute(id)
-                if (deleted) {
+                try {
+                    val deleted = service.deleteRoute(id)
+                    if (deleted) {
+                        call.respond(
+                            HttpStatusCode.OK, mapOf("message" to "Route deleted successfully")
+                        )
+                    } else {
+                        throw NotFoundException("Route with ID $id not found")
+                    }
+                } catch (e: SQLException) {
                     call.respond(
-                        HttpStatusCode.OK, mapOf("message" to "Route deleted successfully")
+                        HttpStatusCode.InternalServerError,
+                        mapOf("message" to "Database error occurred while deleting route")
                     )
-                } else {
-                    throw NotFoundException("Route with ID $id not found")
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("message" to "An unexpected error occurred while deleting route")
+                    )
                 }
             }
         }

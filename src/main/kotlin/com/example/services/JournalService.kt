@@ -1,6 +1,7 @@
 package com.example.services
 
 import com.example.configDb.DataBaseFactory.dbQuery
+import com.example.controllers.TriggerException
 import com.example.dto.JournalDto
 import com.example.models.Journal
 import org.jetbrains.exposed.sql.ResultRow
@@ -9,6 +10,7 @@ import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
+import java.sql.SQLException
 
 class JournalService {
 
@@ -26,26 +28,45 @@ class JournalService {
 
     suspend fun addJournal(journalDto: JournalDto): Int {
         val (parsedTimeOut, parsedTimeIn) = journalDto.stringToDateTimes()
-        return dbQuery {
-            Journal.insertAndGetId {
-                it[timeOut] = parsedTimeOut
-                it[timeIn] = parsedTimeIn
-                it[routeId] = journalDto.routeId
-                it[autoId] = journalDto.autoId
-            }.value
+        return try {
+            dbQuery {
+                Journal.insertAndGetId {
+                    it[timeOut] = parsedTimeOut
+                    it[timeIn] = parsedTimeIn
+                    it[routeId] = journalDto.routeId
+                    it[autoId] = journalDto.autoId
+                }.value
+            }
+        } catch (e: SQLException) {
+            if (e.message?.contains("Trigger") == true) {
+                throw TriggerException("Trigger error while adding journal", e)
+            } else {
+                throw e
+            }
         }
     }
 
     suspend fun updateJournal(journalDto: JournalDto): Boolean {
         val (parsedTimeOut, parsedTimeIn) = journalDto.stringToDateTimes()
-        return dbQuery {
-            val count = Journal.update({ Journal.id eq journalDto.id }) {
-                it[timeOut] = parsedTimeOut
-                it[timeIn] = parsedTimeIn
-                it[routeId] = journalDto.routeId
-                it[autoId] = journalDto.autoId
+        return try {
+            dbQuery {
+                val count = Journal.update({ Journal.id eq journalDto.id }) {
+                    it[timeOut] = parsedTimeOut
+                    it[timeIn] = parsedTimeIn
+                    it[routeId] = journalDto.routeId
+                    it[autoId] = journalDto.autoId
+                }
+                count > 0
             }
-            count > 0
+        } catch (e: SQLException) {
+            if (e.message?.contains("Trigger") == true) {
+                throw TriggerException(
+                    "Trigger error while updating journal: Arrival time cannot be earlier than departure time",
+                    e
+                )
+            } else {
+                throw e
+            }
         }
     }
 

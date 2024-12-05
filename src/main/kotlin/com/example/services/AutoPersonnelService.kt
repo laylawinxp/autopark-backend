@@ -1,14 +1,16 @@
 package com.example.services
 
 import com.example.configDb.DataBaseFactory.dbQuery
-import com.example.models.AutoPersonnel
+import com.example.controllers.TriggerException
 import com.example.dto.AutoPersonnelDto
+import com.example.models.AutoPersonnel
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
+import java.sql.SQLException
 
 class AutoPersonnelService {
     suspend fun getAllPersonnel(): List<AutoPersonnelDto> {
@@ -45,9 +47,17 @@ class AutoPersonnelService {
     }
 
     suspend fun deletePersonnel(id: Int): Boolean {
-        return dbQuery {
-            val count = AutoPersonnel.deleteWhere { AutoPersonnel.id eq id }
-            count > 0
+        return try {
+            dbQuery {
+                val count = AutoPersonnel.deleteWhere { AutoPersonnel.id eq id }
+                count > 0
+            }
+        } catch (e: SQLException) {
+            if (e.message?.contains("Trigger") == true) {
+                throw TriggerException("Trigger error: you cannot delete personnel with refs", e)
+            } else {
+                throw e
+            }
         }
     }
 
